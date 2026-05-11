@@ -1,0 +1,83 @@
+services:
+  argonous-cal-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - argonous_cal_db_data:/var/lib/postgresql/data
+    networks:
+      - scheduler
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  argonous-cal-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - argonous_cal_redis_data:/data
+    networks:
+      - scheduler
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  argonous-cal-web:
+    image: argonous-cal-web:fb0149453e
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        DATABASE_URL: ${DATABASE_URL}
+        DATABASE_DIRECT_URL: ${DATABASE_DIRECT_URL}
+        NEXT_PUBLIC_WEBAPP_URL: ${NEXT_PUBLIC_WEBAPP_URL}
+        NEXT_PUBLIC_API_V2_URL: ${NEXT_PUBLIC_API_V2_URL}
+        NEXT_PUBLIC_LICENSE_CONSENT: ${NEXT_PUBLIC_LICENSE_CONSENT}
+        NEXT_PUBLIC_WEBSITE_TERMS_URL: ${NEXT_PUBLIC_WEBSITE_TERMS_URL}
+        NEXT_PUBLIC_WEBSITE_PRIVACY_POLICY_URL: ${NEXT_PUBLIC_WEBSITE_PRIVACY_POLICY_URL}
+        NEXT_PUBLIC_SINGLE_ORG_SLUG: ${NEXT_PUBLIC_SINGLE_ORG_SLUG}
+        ORGANIZATIONS_ENABLED: ${ORGANIZATIONS_ENABLED}
+        CALCOM_TELEMETRY_DISABLED: ${CALCOM_TELEMETRY_DISABLED}
+        NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+        CALENDSO_ENCRYPTION_KEY: ${CALENDSO_ENCRYPTION_KEY}
+        CSP_POLICY: ${CSP_POLICY}
+        MAX_OLD_SPACE_SIZE: ${MAX_OLD_SPACE_SIZE:-4096}
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_DIRECT_URL: ${DATABASE_DIRECT_URL}
+    networks:
+      - scheduler
+      - edge
+    depends_on:
+      argonous-cal-db:
+        condition: service_healthy
+      argonous-cal-redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+networks:
+  scheduler:
+    name: argonous_cal_private
+    driver: bridge
+  edge:
+    name: hsl_edge
+    external: true
+
+volumes:
+  argonous_cal_db_data:
+  argonous_cal_redis_data:
